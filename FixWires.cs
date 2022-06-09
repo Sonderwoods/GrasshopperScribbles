@@ -54,7 +54,7 @@ public class Script_Instance : GH_ScriptInstance
   /// Output parameters as ref arguments. You don't have to assign output parameters,
   /// they will have a default value.
   /// </summary>
-  private void RunScript(bool FixOnce, bool Debug, bool Enable)
+  private void RunScript(bool FixOnce, bool Enable, bool Debug)
   {
     _debug = Debug;
     _enable = Enable;
@@ -80,6 +80,14 @@ public class Script_Instance : GH_ScriptInstance
     }
 
     Print(msg.ToString());
+
+    // Component setup
+    Component.Description = "Set up event handlers to change all wire types across groups to faint"
+      + "\n\n"
+      + "MIT License. Copyright Mathias Sønderskov Schaltz 2022";
+    Component.Params.Input[0].Description = "Run me once on the document";
+    Component.Params.Input[1].Description = "Toggle to enable event listener";
+    Component.Params.Input[Component.Params.Input.Count - 1].Description = "Set debug to true to get all the events printed in the rhino log";
   }
 
   // <Custom additional code> 
@@ -100,9 +108,10 @@ public class Script_Instance : GH_ScriptInstance
 
   public void FixAll()
   {
-    DebugWrite("Fixing");
+    //DebugWrite("Fixing all?");
     foreach(IGH_ActiveObject key in groupsPerObject.Keys.Where(k => groupsPerObject[k].Count() > 0))
     {
+
       FixInputs(key);
     }
   }
@@ -118,6 +127,13 @@ public class Script_Instance : GH_ScriptInstance
   public void FixInputs(IGH_ActiveObject obj)
   {
 
+    if (!IdExists(id))
+    {
+      DebugWrite("Component not relevant. Disabling old id " + id.ToString());
+      RemoveEventHandlers();
+      return;
+    }
+
     //List<List<IGH_ActiveObject>> parents = new List<List<IGH_ActiveObject>>();
     IGH_Param par = obj as IGH_Param;
     if (par != null && par.Sources != null)
@@ -126,8 +142,9 @@ public class Script_Instance : GH_ScriptInstance
 
       IEnumerable<IGH_ActiveObject> p = par.Sources.Select(s => s.Attributes.GetTopLevel.DocObject as IGH_ActiveObject);
       //parents.Add(p);
-      if(HasGroup(obj) && p.All(o => !HasGroupsInCommon(o, obj)))
+      if(HasGroup(obj) && p.All(o => !HasGroupsInCommon(o, obj)) && par.WireDisplay != GH_ParamWireDisplay.faint)
       {
+        DebugWrite("Fixing " + par.Attributes.GetTopLevel.DocObject.NickName);
         par.WireDisplay = GH_ParamWireDisplay.faint;
       }
 
@@ -141,8 +158,9 @@ public class Script_Instance : GH_ScriptInstance
 
         IEnumerable<IGH_ActiveObject> p = inp.Sources.Select(i => i.Attributes.GetTopLevel.DocObject as IGH_ActiveObject);
 
-        if(HasGroup(obj) && p.All(o => !HasGroupsInCommon(o, obj)))
+        if(HasGroup(obj) && p.All(o => !HasGroupsInCommon(o, obj)) && inp.WireDisplay != GH_ParamWireDisplay.faint)
         {
+          DebugWrite("Fixing " + inp.Attributes.GetTopLevel.DocObject.NickName);
           inp.WireDisplay = GH_ParamWireDisplay.faint;
         }
       }
@@ -221,11 +239,22 @@ public class Script_Instance : GH_ScriptInstance
 
   }
 
+  public bool IdExists(int id)
+  {
+    IList<IGH_DocumentObject> objs = Grasshopper.Instances.ActiveCanvas.Document.Objects;
+    return objs
+      .OfType<IGH_Component>()
+      .Where(ob => ob.NickName == this.Component.NickName)
+      .Where(ob => ob.GetType().ToString() == "ScriptComponents.Component_CSNET_Script")
+      .Where(ob => ob.Message == "id: " + id.ToString()).Any();
+
+  }
+
   public void DebugWrite(string msg)
   {
     if (_debug)
     {
-      Rhino.RhinoApp.WriteLine(String.Format("[ColGrps {0}]: {1}", id, msg));
+      Rhino.RhinoApp.WriteLine(String.Format("[FixWire {0}]: {1}", id, msg));
     }
   }
   // </Custom additional code> 
